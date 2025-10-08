@@ -24,25 +24,33 @@ async function get(url: string, ms = 5000) {
   }
 }
 
-// helper: extract actual headlines from RSS-ish text
-function extractItems(raw: string) {
-  const lines = raw.split("\n").map(s => s.trim()).filter(Boolean);
-  
-  // Look for lines that are likely headlines (medium length, not URLs, not metadata)
-  const headlines = lines.filter(line => {
-    const len = line.length;
-    const hasUrl = line.includes('http://') || line.includes('https://');
-    const hasDate = /\d{4}-\d{2}-\d{2}/.test(line);
-    const isMetadata = line.startsWith('Title:') || line.startsWith('Link:') || line.startsWith('Published:');
-    const tooShort = len < 25;
-    const tooLong = len > 200;
-    
-    return !hasUrl && !hasDate && !isMetadata && !tooShort && !tooLong;
-  });
-  
-  // Deduplicate and limit
-  const unique = Array.from(new Set(headlines));
-  return unique.map((t) => ({ title: t }));
+// CORS proxy for hackathon
+const cors = (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`;
+
+// Parse real RSS XML and filter to last 48 hours
+function parseRss(rawXml: string, source: string, category: string) {
+  try {
+    const doc = new DOMParser().parseFromString(rawXml, "text/xml");
+    const items = Array.from(doc.querySelectorAll("item")).map(it => {
+      const title = it.querySelector("title")?.textContent?.trim() ?? "";
+      const url = it.querySelector("link")?.textContent?.trim() ?? "";
+      const pubDate = it.querySelector("pubDate")?.textContent ?? "";
+      const publishedAt = pubDate ? new Date(pubDate).toISOString() : "";
+      return { title, url, publishedAt, source, category };
+    }).filter(i => i.title && i.url);
+
+    // Filter to last 48 hours only
+    const FORTY_EIGHT_H = 1000 * 60 * 60 * 48;
+    const now = Date.now();
+    return items.filter(i => {
+      if (!i.publishedAt) return false;
+      const t = Date.parse(i.publishedAt);
+      return Number.isFinite(t) && (now - t) <= FORTY_EIGHT_H;
+    });
+  } catch (e) {
+    console.error(`Failed to parse RSS from ${source}:`, e);
+    return [];
+  }
 }
 
 // ✅ replace your fetchDailyNews with this:
@@ -82,30 +90,28 @@ export async function fetchDailyNews(): Promise<Card[]> {
     const startTime = Date.now();
     console.log("📰 Fetching fresh news...");
     
-    // 📰 Diverse news sources across different categories
+    // 📰 Real RSS feeds (direct XML)
     const FEEDS = [
-      { url: "https://r.jina.ai/http://feeds.bbci.co.uk/news/world/rss.xml", source: "BBC News", category: "top" },
-      { url: "https://r.jina.ai/https://www.wired.com/feed/rss", source: "Wired", category: "tech" },
-      { url: "https://r.jina.ai/https://www.espn.com/espn/rss/news", source: "ESPN", category: "sports" },
-      { url: "https://r.jina.ai/https://www.cnbc.com/id/100003114/device/rss/rss.html", source: "CNBC", category: "markets" },
-      { url: "https://r.jina.ai/https://www.theverge.com/rss/index.xml", source: "The Verge", category: "tech" },
-      { url: "https://r.jina.ai/https://news.ycombinator.com/rss", source: "Hacker News", category: "tech" },
+      { url: "http://feeds.bbci.co.uk/news/world/rss.xml", source: "BBC News", category: "top" },
+      { url: "https://www.wired.com/feed/rss", source: "Wired", category: "tech" },
+      { url: "https://www.espn.com/espn/rss/news", source: "ESPN", category: "sports" },
+      { url: "https://www.cnbc.com/id/100003114/device/rss/rss.html", source: "CNBC", category: "markets" },
+      { url: "https://www.theverge.com/rss/index.xml", source: "The Verge", category: "tech" },
     ];
 
     const feedStart = Date.now();
     console.log("Fetching RSS feeds from", FEEDS.length, "sources...");
-    const results = await Promise.allSettled(FEEDS.map(f => 
-      get(f.url, 4000).then(text => ({ text, source: f.source, category: f.category }))
-    ));
     
-    const feedData = results
-      .filter(r => r.status === "fulfilled")
-      .map((r: any) => r.value);
+    const results = await Promise.allSettled(
+      FEEDS.map(f => get(cors(f.url), 5000).then(xml => parseRss(xml, f.source, f.category)))
+    );
     
-    console.log(`✅ Fetched ${feedData.length} feeds in ${Date.now() - feedStart}ms`);
+    const allItems = results.flatMap(r => r.status === "fulfilled" ? r.value : []);
     
-    // Extract items per source to maintain source attribution
-    const itemsByCategory: Record<string, Array<{title: string, source: string, category: string}>> = {
+    console.log(`✅ Fetched ${allItems.length} items (last 48h) in ${Date.now() - feedStart}ms`);
+    
+    // Group by category
+    const itemsByCategory: Record<string, typeof allItems> = {
       top: [],
       tech: [],
       sports: [],
@@ -114,22 +120,13 @@ export async function fetchDailyNews(): Promise<Card[]> {
       weather: []
     };
     
-    for (const feed of feedData) {
-      const items = extractItems(feed.text).slice(0, 6); // Limit per source to balance
-      items.forEach(item => {
-        const categoryItem = {
-          title: item.title,
-          source: feed.source,
-          category: feed.category
-        };
-        if (itemsByCategory[feed.category]) {
-          itemsByCategory[feed.category].push(categoryItem);
-        }
-      });
+    for (const item of allItems) {
+      if (itemsByCategory[item.category]) {
+        itemsByCategory[item.category].push(item);
+      }
     }
     
-    const allItems = Object.values(itemsByCategory).flat();
-    console.log("Extracted items by category:", {
+    console.log("Items by category:", {
       top: itemsByCategory.top.length,
       tech: itemsByCategory.tech.length,
       sports: itemsByCategory.sports.length,
@@ -146,50 +143,53 @@ export async function fetchDailyNews(): Promise<Card[]> {
       dangerouslyAllowBrowser: true, // ok for hackathon
     });
 
-    const system = `You are a news curator creating concise briefing cards from ACTUAL news headlines.
+    const system = `You are a news curator. You will receive actual news article titles with publication times and URLs.
 
-    CRITICAL RULES:
-    1. Each card must be about a SPECIFIC, REAL news story from the provided headlines
-    2. DO NOT write generic descriptions of news sources
-    3. MANDATORY: Use EXACTLY 6 DIFFERENT categories - one card per category!
-    - Card 1: 'top' (world news, politics)
-    - Card 2: 'tech' (technology, AI, gadgets)
-    - Card 3: 'sports' (athletics, teams, games)
-    - Card 4: 'markets' (finance, economy, business)
-    - Card 5: 'tech' or 'top' (alternate category)
-    - Card 6: any remaining category
-    4. Each card MUST use a DIFFERENT source
-    5. Pick the BEST matching headline from each category
+YOUR JOB: Write ONLY the summary and bullets. DO NOT modify the headline or invent details.
 
-    Card format:
-    - id: string
-    - headline: punchy, specific (<= 80 chars) about THE ACTUAL STORY
-    - summary: 2-3 sentences (200-350 chars) with SPECIFIC details, names, numbers
-    - bullets: 2-3 key facts
-    - category: MUST follow the distribution above
-    - timestamp: ISO 8601
-    - citations: array with the source name
+RULES:
+1. Each input article has: title, url, publishedAt (timestamp), source, category
+2. Write a 2-3 sentence summary (200-350 chars) that expands on the headline
+3. DO NOT invent specific numbers, times, locations, names, or statistics
+4. Keep it general and context-based
+5. Write 2-3 bullet points about why this matters or key context
+6. Return EXACTLY 6 cards with diverse categories
 
-    BAD: "BBC News Coverage - BBC provides comprehensive coverage..."
-    GOOD: "Apple Unveils iPhone 16 with AI Features - Apple announced..."`;
+Output format:
+{
+  "id": "unique-id",
+  "headline": "USE THE EXACT TITLE PROVIDED",
+  "summary": "2-3 sentences expanding on the headline without inventing details",
+  "bullets": ["2-3 context points", "not made-up facts"],
+  "category": "from input",
+  "timestamp": "from input publishedAt",
+  "citations": ["from input source"]
+}
 
-        const user = haveSources
-        ? `Create 6 briefing cards from these headlines grouped by category. CRITICAL: Pick ONE story from EACH category to ensure diversity. Use different sources for each card:
+Select 6 diverse stories:
+- 1-2 from TOP/world news
+- 1-2 from TECH
+- 1 from SPORTS  
+- 1 from MARKETS
+- Use different sources for each`;
 
-    TOP/WORLD NEWS (pick 1-2):
-    ${JSON.stringify(itemsByCategory.top.slice(0, 5), null, 2)}
+    const user = haveSources
+      ? `Select 6 diverse stories from these REAL articles (published in last 48h):
 
-    TECH NEWS (pick 1-2):
-    ${JSON.stringify(itemsByCategory.tech.slice(0, 5), null, 2)}
+TOP/WORLD (pick 1-2):
+${JSON.stringify(itemsByCategory.top.slice(0, 6), null, 2)}
 
-    SPORTS (pick 1):
-    ${JSON.stringify(itemsByCategory.sports.slice(0, 5), null, 2)}
+TECH (pick 1-2):
+${JSON.stringify(itemsByCategory.tech.slice(0, 6), null, 2)}
 
-    MARKETS/BUSINESS (pick 1):
-    ${JSON.stringify(itemsByCategory.markets.slice(0, 5), null, 2)}
+SPORTS (pick 1):
+${JSON.stringify(itemsByCategory.sports.slice(0, 6), null, 2)}
 
-    Return ONLY the JSON array with 6 cards total, ensuring category diversity.`
-        : `Return an empty array: []`;
+MARKETS (pick 1):
+${JSON.stringify(itemsByCategory.markets.slice(0, 6), null, 2)}
+
+Return a JSON array of 6 cards. Use the EXACT title from the input. Write summary and bullets only.`
+      : `[]`;
 
     const aiStart = Date.now();
     console.log("Calling OpenAI API with", allItems.length, "headlines...");
