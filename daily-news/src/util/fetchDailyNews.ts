@@ -14,6 +14,47 @@ type Category = "top" | "tech" | "sports" | "markets" | "local" | "weather";
 
 const CATEGORY_ORDER: Category[] = ["top", "tech", "sports", "markets", "local", "weather"];
 
+const CARD_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "headline", "summary", "bullets", "category", "timestamp", "citations"],
+  properties: {
+    id: { type: "string", minLength: 1 },
+    headline: { type: "string", minLength: 1, maxLength: 80 },
+    summary: { type: "string", minLength: 1, maxLength: 350 },
+    bullets: {
+      type: "array",
+      minItems: 2,
+      maxItems: 3,
+      items: { type: "string", minLength: 1, maxLength: 160 },
+    },
+    category: { type: "string", enum: CATEGORY_ORDER },
+    timestamp: { type: "string", format: "date-time" },
+    citations: {
+      type: "array",
+      minItems: 1,
+      maxItems: 6,
+      items: { type: "string", minLength: 1, maxLength: 500 },
+    },
+  },
+};
+
+const CARDS_ARRAY_SCHEMA = {
+  type: "array",
+  minItems: CATEGORY_ORDER.length,
+  maxItems: CATEGORY_ORDER.length,
+  items: CARD_JSON_SCHEMA,
+};
+
+const RESPONSE_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["cards"],
+  properties: {
+    cards: CARDS_ARRAY_SCHEMA,
+  },
+};
+
 function buildPrompts(requestDate: Date) {
   const isoDate = requestDate.toISOString().split("T")[0] ?? "";
   const prettyDate = requestDate.toLocaleDateString("en-US", {
@@ -36,7 +77,7 @@ Non-negotiables:
 - Bullet points are short (<= 20 words) factual highlights that extend the summary.
 - Timestamps are ISO 8601 strings using the article’s publish time on ${isoDate}. If the article does not list a publish time, use ${isoDate} with the current UTC time.
 
-Return only the JSON array of card objects defined above. Do not add commentary.`;
+Return only a JSON object with a single property "cards" containing the array of card objects defined above. Do not add commentary.`;
 
   const userPrompt = `Produce the Envoy workplace briefing for ${prettyDate} using the OpenAI web search tool.
 
@@ -53,7 +94,7 @@ Constraints:
 4. Bullets must be 2 or 3 concise facts that add new detail beyond the summary.
 5. Headline <= 80 characters, summary 2–3 sentences (<= 350 characters).
 
-Return only the JSON array of card objects.`;
+Return only a JSON object with a single property "cards" that contains the array of card objects.`;
 
   return { systemPrompt, userPrompt };
 }
@@ -138,6 +179,14 @@ export async function fetchDailyNews(): Promise<Card[]> {
       model: "gpt-4.1-mini",
       temperature: 0.2,
       max_output_tokens: 1500,
+      text: {
+        format: {
+          type: "json_schema",
+          name: "daily_briefing",
+          strict: true,
+          schema: RESPONSE_JSON_SCHEMA,
+        },
+      },
       tools: [{ type: "web_search" }],
       input: [
         {
@@ -164,7 +213,10 @@ export async function fetchDailyNews(): Promise<Card[]> {
     }
 
     const fallbackTimestamp = requestDate.toISOString();
-    const normalized = Array.isArray(parsed) ? parsed : [];
+    const parsedObject: Record<string, unknown> =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+    const maybeCards = parsedObject.cards as unknown;
+    const normalized = Array.isArray(maybeCards) ? maybeCards : [];
 
     const cards = normalized.slice(0, CATEGORY_ORDER.length).map((item, idx) => {
       const fallbackCategory = CATEGORY_ORDER[idx] ?? "top";

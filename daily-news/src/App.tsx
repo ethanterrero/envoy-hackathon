@@ -153,7 +153,7 @@ export default function App() {
                 <div className="mt-10 flex flex-wrap items-center justify-between gap-4 text-xs font-medium uppercase tracking-wide text-slate-400">
                   <span className="flex items-center gap-2">
                     <span className="h-1.5 w-1.5 rounded-full bg-[#ff4f00]" />
-                    {leadCard.citations.length > 0 ? leadCard.citations.join(" • ") : "Source unavailable"}
+                    {leadCard.citations.length > 0 ? leadCard.citations.map(c => c.split(" — ")[0]).join(" • ") : "Source unavailable"}
                   </span>
                   <span>
                     {relativeTimeFrom(leadCard.timestamp, now) ?? "moments ago"}
