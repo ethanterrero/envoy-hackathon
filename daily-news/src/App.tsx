@@ -113,7 +113,7 @@ export default function App() {
                 Envoy
               </div>
               <h1 className="mt-4 text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl">
-                Workplace Daily Briefing
+                Daily Briefing
               </h1>
             </div>
             <div className="text-right">
@@ -130,7 +130,10 @@ export default function App() {
         <main className="flex-1 px-6 pb-20 sm:px-12 lg:px-20">
           {leadCard ? (
             <section className="mx-auto max-w-4xl">
-              <article className="rounded-[32px] bg-white p-10 text-left shadow-2xl shadow-slate-900/5 ring-1 ring-slate-200/70">
+              <article
+                key={leadCard.id ?? leadIndex}
+                className="animate-fade-slide-up rounded-[32px] bg-white p-10 text-left shadow-2xl shadow-slate-900/5 ring-1 ring-slate-200/70"
+              >
                 <div className="flex items-center gap-4 text-xs font-semibold uppercase tracking-[0.35em] text-slate-500">
                   <span
                     className={`inline-flex items-center rounded-full px-4 py-1 tracking-widest ${getCategoryStyle(leadCard.category)}`}
