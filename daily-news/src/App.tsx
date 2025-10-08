@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchDailyNews, type Card } from "./util/fetchDailyNews";
 import "./index.css";
 
@@ -82,10 +82,7 @@ export default function App() {
 
   const leadCard = cards[leadIndex];
 
-  const categories = useMemo(
-    () => Array.from(new Set(cards.map((card) => card.category))),
-    [cards],
-  );
+
 
   if (loading)
     return (
@@ -93,7 +90,7 @@ export default function App() {
         <span className="text-xs font-semibold uppercase tracking-[0.5em] text-[#ff4f00]">
           Envoy
         </span>
-        <p className="mt-4 text-lg font-medium">Curating today’s workplace briefing…</p>
+        <p className="mt-4 text-lg font-medium">Curating today's workplace briefing…</p>
       </div>
     );
 
@@ -160,7 +157,7 @@ export default function App() {
                     {leadCard.citations.length > 0 ? leadCard.citations.join(" • ") : "Source unavailable"}
                   </span>
                   <span>
-                    Updated {relativeTimeFrom(leadCard.timestamp, now) ?? "moments ago"}
+                    {relativeTimeFrom(leadCard.timestamp, now) ?? "moments ago"}
                   </span>
                 </div>
               </article>
