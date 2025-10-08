@@ -22,41 +22,88 @@ export default function App() {
 
   if (loading)
     return (
-      <div className="h-screen flex items-center justify-center bg-slate-900 text-slate-200">
-        Loading daily briefing...
+      <div className="h-screen flex items-center justify-center bg-white">
+        <div className="text-center">
+          <div className="w-12 h-12 border-3 border-slate-200 border-t-emerald-500 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-700 font-medium">Loading...</p>
+        </div>
       </div>
     );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100">
-      <header className="bg-slate-800/50 border-b border-slate-700 px-8 py-6">
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-          Daily News Briefing
-        </h1>
-      </header>
+    <div className="h-screen w-screen overflow-hidden bg-slate-50 flex flex-col">
+      {/* Compact Top Bar */}
+      <nav className="bg-white border-b border-slate-200 flex-shrink-0">
+        <div className="px-8 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-emerald-500 rounded flex items-center justify-center">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Daily Briefing</h1>
+              <p className="text-sm text-slate-500">AI-curated news from trusted sources</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-lg font-semibold text-slate-900">
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </p>
+            <p className="text-sm text-slate-500">
+              {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          </div>
+        </div>
+      </nav>
 
-      <main className="max-w-7xl mx-auto p-8">
+      {/* Fixed Grid - 2 Rows x 3 Columns */}
+      <main className="flex-1 overflow-hidden p-6">
         {cards.length > 0 ? (
-          <div className="grid grid-cols-3 gap-8">
+          <div className="h-full grid grid-cols-3 grid-rows-2 gap-4">
             {cards.map((c) => (
-              <div key={c.id} className="bg-slate-800/50 rounded-lg p-6 border border-slate-700 flex flex-col">
-                <div className="inline-block px-3 py-1 mb-4 text-sm bg-blue-500/20 text-blue-300 rounded-full self-start">
-                  {c.category.toUpperCase()}
+              <div 
+                key={c.id} 
+                className="bg-white rounded-lg p-5 border-2 border-slate-200 flex flex-col overflow-hidden"
+              >
+                {/* Category Badge */}
+                <div className="mb-3">
+                  <span className={`inline-block px-3 py-1.5 text-sm font-bold rounded ${
+                    c.category === 'tech' ? 'bg-blue-50 text-blue-700' :
+                    c.category === 'sports' ? 'bg-emerald-50 text-emerald-700' :
+                    c.category === 'markets' ? 'bg-purple-50 text-purple-700' :
+                    c.category === 'top' ? 'bg-orange-50 text-orange-700' :
+                    'bg-slate-50 text-slate-700'
+                  }`}>
+                    {c.category.toUpperCase()}
+                  </span>
                 </div>
-                <h2 className="text-xl font-bold mb-3">{c.headline}</h2>
-                <p className="text-slate-300 mb-4 leading-relaxed">{c.summary}</p>
-                <ul className="space-y-2 mb-4">
-                  {c.bullets.map((b, i) => (
-                    <li key={i} className="flex items-start text-sm text-slate-200">
-                      <span className="text-blue-400 mr-2 mt-0.5">•</span>
-                      {b}
-                    </li>
+
+                {/* Headline */}
+                <h3 className="text-lg font-bold text-slate-900 mb-2 leading-tight line-clamp-2">
+                  {c.headline}
+                </h3>
+
+                {/* Summary */}
+                <p className="text-slate-700 mb-3 text-sm leading-relaxed line-clamp-3">
+                  {c.summary}
+                </p>
+
+                {/* Key Points */}
+                <div className="mb-2 flex-grow">
+                  {c.bullets.slice(0, 2).map((b, i) => (
+                    <div key={i} className="flex items-start gap-2 mb-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 flex-shrink-0"></div>
+                      <span className="text-xs text-slate-600 leading-snug line-clamp-2">{b}</span>
+                    </div>
                   ))}
-                </ul>
+                </div>
+
+                {/* Source */}
                 {c.citations && c.citations.length > 0 && (
-                  <div className="mt-auto pt-4 border-t border-slate-700">
-                    <p className="text-xs text-slate-500">
-                      Source: {c.citations.join(", ")}
+                  <div className="pt-2 border-t border-slate-100 mt-auto">
+                    <p className="text-xs text-slate-500 font-medium truncate">
+                      {c.citations.join(", ")}
                     </p>
                   </div>
                 )}
@@ -64,8 +111,16 @@ export default function App() {
             ))}
           </div>
         ) : (
-          <div className="text-center py-20 text-slate-400">
-            No news yet — check after 6:00 AM.
+          <div className="h-full flex items-center justify-center">
+            <div className="bg-white rounded-xl border-2 border-slate-200 p-12 text-center">
+              <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-10 h-10 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+                </svg>
+              </div>
+              <p className="text-slate-600 font-bold text-xl">No news available</p>
+              <p className="text-slate-500 text-sm mt-1">Check back later for updates</p>
+            </div>
           </div>
         )}
       </main>
