@@ -3,17 +3,13 @@ import { fetchDailyNews, type Card } from "./util/fetchDailyNews";
 import "./index.css";
 
 
-
 export default function App() {
   const [cards, setCards] = useState<Card[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const init = async () => {
-      // TESTING MODE: Always fetch fresh data (bypass cache)
-      console.log("Fetching fresh news from OpenAI...");
       const fresh = await fetchDailyNews();
-      console.log("Received cards:", fresh);
       setCards(fresh);
       setLoading(false);
     };
@@ -50,9 +46,7 @@ export default function App() {
             <p className="text-lg font-semibold text-slate-900">
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </p>
-            <p className="text-sm text-slate-500">
-              {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-            </p>
+       
           </div>
         </div>
       </nav>

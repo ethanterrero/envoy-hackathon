@@ -47,9 +47,40 @@ function extractItems(raw: string) {
 
 // ✅ replace your fetchDailyNews with this:
 export async function fetchDailyNews(): Promise<Card[]> {
+  const REFRESH_HOUR = 8; // Refresh at 8:00 AM
+  const CACHE_KEY = "daily-news-cards";
+  const CACHE_DATE_KEY = "daily-news-date";
+
+  // Check if we have cached data
+  try {
+    const now = new Date();
+    const today = now.toDateString();
+    const currentHour = now.getHours();
+    
+    const cachedCards = localStorage.getItem(CACHE_KEY);
+    const cachedDate = localStorage.getItem(CACHE_DATE_KEY);
+
+    // Use cache if it's from today and either:
+    // - We haven't hit 8 AM yet, OR
+    // - We already fetched at/after 8 AM today
+    if (cachedCards && cachedDate === today) {
+      console.log("✅ Using cached news from today");
+      return JSON.parse(cachedCards);
+    }
+
+    // If cache is from yesterday and it's before 8 AM, use old cache
+    if (cachedCards && currentHour < REFRESH_HOUR) {
+      console.log("⏰ Before 8 AM - using yesterday's cache");
+      return JSON.parse(cachedCards);
+    }
+  } catch (e) {
+    console.log("Cache check failed, fetching fresh data");
+  }
+
+  // Fetch fresh data
   try {
     const startTime = Date.now();
-    console.log("📰 Starting news fetch...");
+    console.log("📰 Fetching fresh news...");
     
     // 📰 Diverse news sources across different categories
     const FEEDS = [
@@ -200,9 +231,30 @@ export async function fetchDailyNews(): Promise<Card[]> {
 
     const result = normalized.slice(0, 6);
     console.log(`🎉 Total fetch time: ${Date.now() - startTime}ms, returning ${result.length} cards`);
+    
+    // Cache the results
+    try {
+      const today = new Date().toDateString();
+      localStorage.setItem(CACHE_KEY, JSON.stringify(result));
+      localStorage.setItem(CACHE_DATE_KEY, today);
+      console.log("💾 Cached news for today");
+    } catch (e) {
+      console.log("Failed to cache results");
+    }
+    
     return result;
   } catch (e) {
     console.error("❌ Hackathon fetch error:", e);
+    
+    // On error, try to return cached data as fallback
+    try {
+      const cachedCards = localStorage.getItem(CACHE_KEY);
+      if (cachedCards) {
+        console.log("⚠️ Error occurred, using cached fallback");
+        return JSON.parse(cachedCards);
+      }
+    } catch {}
+    
     return [];
   }
 }
