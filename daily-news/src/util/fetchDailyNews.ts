@@ -10,199 +10,234 @@ export interface Card {
   citations: string[];
 }
 
-// helper: quick fetch with timeout
-async function get(url: string, ms = 5000) {
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), ms);
-  try {
-    const res = await fetch(url, { signal: ctrl.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const txt = await res.text();
-    return txt;
-  } finally {
-    clearTimeout(id);
-  }
-}
+type Category = "top" | "tech" | "sports" | "markets" | "local" | "weather";
 
-// helper: extract actual headlines from RSS-ish text
-function extractItems(raw: string) {
-  const lines = raw.split("\n").map(s => s.trim()).filter(Boolean);
-  
-  // Look for lines that are likely headlines (medium length, not URLs, not metadata)
-  const headlines = lines.filter(line => {
-    const len = line.length;
-    const hasUrl = line.includes('http://') || line.includes('https://');
-    const hasDate = /\d{4}-\d{2}-\d{2}/.test(line);
-    const isMetadata = line.startsWith('Title:') || line.startsWith('Link:') || line.startsWith('Published:');
-    const tooShort = len < 25;
-    const tooLong = len > 200;
-    
-    return !hasUrl && !hasDate && !isMetadata && !tooShort && !tooLong;
+const CATEGORY_ORDER: Category[] = ["top", "tech", "sports", "markets", "local", "weather"];
+
+function buildPrompts(requestDate: Date) {
+  const isoDate = requestDate.toISOString().split("T")[0] ?? "";
+  const prettyDate = requestDate.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
   });
-  
-  // Deduplicate and limit
-  const unique = Array.from(new Set(headlines));
-  return unique.map((t) => ({ title: t }));
+
+  const systemPrompt = `You are an Envoy newsroom editor with live web access. Today is ${prettyDate} and the current ISO date is ${isoDate}.
+
+Your job is to build a six-card daily workplace briefing that executives can skim quickly.
+
+Non-negotiables:
+- You MUST run fresh web searches before answering so every card is grounded in reporting published on ${isoDate}. If a candidate article was not published on ${isoDate}, you must discard it and find one that was.
+- Return exactly six cards as JSON. Each card maps to one category: top, tech, sports, markets, local, weather.
+- Summaries must include concrete names, numbers, quotes, or dates pulled directly from the cited article.
+- Every card must include at least one citation formatted as "Outlet — https://link" that points to the article you used. Do not invent outlets or URLs and never return placeholder text like "source unavailable".
+- Bullet points are short (<= 20 words) factual highlights that extend the summary.
+- Timestamps are ISO 8601 strings using the article’s publish time on ${isoDate}. If the article does not list a publish time, use ${isoDate} with the current UTC time.
+
+Return only the JSON array of card objects defined above. Do not add commentary.`;
+
+  const userPrompt = `Produce the Envoy workplace briefing for ${prettyDate} using the OpenAI web search tool.
+
+Constraints:
+1. Categories (exactly one card each, in this order):
+   - top: major national or global development with workplace impact.
+   - tech: technology, AI, or workplace tools.
+   - sports: headline moment, ideally with fan or business angle.
+   - markets: business, finance, or corporate operations trend.
+   - local: San Francisco Bay Area workplace, commuting, or civic update.
+   - weather: notable U.S. or global weather event affecting workplaces or travel.
+2. Each card must cite a DIFFERENT publication. Verify the article publish date is ${isoDate} before citing it.
+3. Citations array must contain strings formatted exactly as "Outlet — https://link".
+4. Bullets must be 2 or 3 concise facts that add new detail beyond the summary.
+5. Headline <= 80 characters, summary 2–3 sentences (<= 350 characters).
+
+Return only the JSON array of card objects.`;
+
+  return { systemPrompt, userPrompt };
 }
 
-// ✅ replace your fetchDailyNews with this:
-export async function fetchDailyNews(): Promise<Card[]> {
-  try {
-    const startTime = Date.now();
-    console.log("📰 Starting news fetch...");
-    
-    // 📰 Diverse news sources across different categories
-    const FEEDS = [
-      { url: "https://r.jina.ai/http://feeds.bbci.co.uk/news/world/rss.xml", source: "BBC News", category: "top" },
-      { url: "https://r.jina.ai/https://www.wired.com/feed/rss", source: "Wired", category: "tech" },
-      { url: "https://r.jina.ai/https://www.espn.com/espn/rss/news", source: "ESPN", category: "sports" },
-      { url: "https://r.jina.ai/https://www.cnbc.com/id/100003114/device/rss/rss.html", source: "CNBC", category: "markets" },
-      { url: "https://r.jina.ai/https://www.theverge.com/rss/index.xml", source: "The Verge", category: "tech" },
-      { url: "https://r.jina.ai/https://news.ycombinator.com/rss", source: "Hacker News", category: "tech" },
-    ];
+function coerceString(value: unknown, fallback = ""): string {
+  if (typeof value === "string") return value;
+  if (value == null) return fallback;
+  return String(value);
+}
 
-    const feedStart = Date.now();
-    console.log("Fetching RSS feeds from", FEEDS.length, "sources...");
-    const results = await Promise.allSettled(FEEDS.map(f => 
-      get(f.url, 4000).then(text => ({ text, source: f.source, category: f.category }))
-    ));
-    
-    const feedData = results
-      .filter(r => r.status === "fulfilled")
-      .map((r: any) => r.value);
-    
-    console.log(`✅ Fetched ${feedData.length} feeds in ${Date.now() - feedStart}ms`);
-    
-    // Extract items per source to maintain source attribution
-    const itemsByCategory: Record<string, Array<{title: string, source: string, category: string}>> = {
-      top: [],
-      tech: [],
-      sports: [],
-      markets: [],
-      local: [],
-      weather: []
-    };
-    
-    for (const feed of feedData) {
-      const items = extractItems(feed.text).slice(0, 6); // Limit per source to balance
-      items.forEach(item => {
-        const categoryItem = {
-          title: item.title,
-          source: feed.source,
-          category: feed.category
-        };
-        if (itemsByCategory[feed.category]) {
-          itemsByCategory[feed.category].push(categoryItem);
-        }
-      });
+function normalizeCategory(value: unknown, fallback: Category): Category {
+  if (typeof value === "string") {
+    const lower = value.toLowerCase() as Category;
+    if (CATEGORY_ORDER.includes(lower)) return lower;
+  }
+  return fallback;
+}
+
+function toStringArray(value: unknown, limit: number): string[] {
+  if (!Array.isArray(value)) return [];
+
+  const asStrings = value
+    .map((entry) => {
+      if (typeof entry === "string") return entry.trim();
+      if (entry && typeof entry === "object") {
+        const maybeName = "name" in entry ? coerceString((entry as Record<string, unknown>).name) : "";
+        const maybeTitle = "title" in entry ? coerceString((entry as Record<string, unknown>).title) : "";
+        const maybeUrl = "url" in entry ? coerceString((entry as Record<string, unknown>).url) : "";
+        if (maybeName && maybeUrl) return `${maybeName} — ${maybeUrl}`;
+        if (maybeTitle && maybeUrl) return `${maybeTitle} — ${maybeUrl}`;
+        if (maybeUrl) return maybeUrl;
+      }
+      return coerceString(entry).trim();
+    })
+    .filter(Boolean);
+
+  return asStrings.slice(0, limit);
+}
+
+function formatCitationEntry(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  if (trimmed.includes(" — ")) return trimmed;
+
+  const urlMatch = trimmed.match(/https?:\/\/\S+/);
+  if (!urlMatch) return trimmed;
+
+  const rawUrl = urlMatch[0].replace(/[)\].,;]+$/, "");
+  let label = trimmed.replace(urlMatch[0], "").trim().replace(/^[-–—:•]+/, "").trim();
+
+  if (!label) {
+    try {
+      const hostname = new URL(rawUrl).hostname.replace(/^www\./, "");
+      label = hostname;
+    } catch {
+      label = "Source";
     }
-    
-    const allItems = Object.values(itemsByCategory).flat();
-    console.log("Extracted items by category:", {
-      top: itemsByCategory.top.length,
-      tech: itemsByCategory.tech.length,
-      sports: itemsByCategory.sports.length,
-      markets: itemsByCategory.markets.length,
-    });
-    
-    const haveSources = allItems.length > 0;
+  }
 
+  return `${label} — ${rawUrl}`;
+}
+
+export async function fetchDailyNews(): Promise<Card[]> {
+  const startTime = Date.now();
+  const requestDate = new Date();
+  try {
     const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-    console.log("OpenAI API key exists:", !!apiKey);
-    
+    if (!apiKey) {
+      console.error("❌ Missing VITE_OPENAI_API_KEY");
+      return [];
+    }
+
     const client = new OpenAI({
-      apiKey: apiKey,
-      dangerouslyAllowBrowser: true, // ok for hackathon
+      apiKey,
+      dangerouslyAllowBrowser: true,
     });
 
-    const system = `You are a news curator creating concise briefing cards from ACTUAL news headlines.
+    const { systemPrompt, userPrompt } = buildPrompts(requestDate);
 
-    CRITICAL RULES:
-    1. Each card must be about a SPECIFIC, REAL news story from the provided headlines
-    2. DO NOT write generic descriptions of news sources
-    3. MANDATORY: Use EXACTLY 6 DIFFERENT categories - one card per category!
-    - Card 1: 'top' (world news, politics)
-    - Card 2: 'tech' (technology, AI, gadgets)
-    - Card 3: 'sports' (athletics, teams, games)
-    - Card 4: 'markets' (finance, economy, business)
-    - Card 5: 'tech' or 'top' (alternate category)
-    - Card 6: any remaining category
-    4. Each card MUST use a DIFFERENT source
-    5. Pick the BEST matching headline from each category
-
-    Card format:
-    - id: string
-    - headline: punchy, specific (<= 80 chars) about THE ACTUAL STORY
-    - summary: 2-3 sentences (200-350 chars) with SPECIFIC details, names, numbers
-    - bullets: 2-3 key facts
-    - category: MUST follow the distribution above
-    - timestamp: ISO 8601
-    - citations: array with the source name
-
-    BAD: "BBC News Coverage - BBC provides comprehensive coverage..."
-    GOOD: "Apple Unveils iPhone 16 with AI Features - Apple announced..."`;
-
-        const user = haveSources
-        ? `Create 6 briefing cards from these headlines grouped by category. CRITICAL: Pick ONE story from EACH category to ensure diversity. Use different sources for each card:
-
-    TOP/WORLD NEWS (pick 1-2):
-    ${JSON.stringify(itemsByCategory.top.slice(0, 5), null, 2)}
-
-    TECH NEWS (pick 1-2):
-    ${JSON.stringify(itemsByCategory.tech.slice(0, 5), null, 2)}
-
-    SPORTS (pick 1):
-    ${JSON.stringify(itemsByCategory.sports.slice(0, 5), null, 2)}
-
-    MARKETS/BUSINESS (pick 1):
-    ${JSON.stringify(itemsByCategory.markets.slice(0, 5), null, 2)}
-
-    Return ONLY the JSON array with 6 cards total, ensuring category diversity.`
-        : `Return an empty array: []`;
-
-    const aiStart = Date.now();
-    console.log("Calling OpenAI API with", allItems.length, "headlines...");
-    const resp = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.3,
-      max_tokens: 2000, // Limit response size for speed
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
+    console.log("🌐 Fetching briefing via OpenAI web search…");
+    const response = await client.responses.create({
+      model: "gpt-4.1-mini",
+      temperature: 0.2,
+      max_output_tokens: 1500,
+      tools: [{ type: "web_search" }],
+      input: [
+        {
+          role: "system",
+          content: [{ type: "input_text", text: systemPrompt }],
+        },
+        {
+          role: "user",
+          content: [{ type: "input_text", text: userPrompt }],
+        },
       ],
     });
 
-    const text = resp.choices?.[0]?.message?.content ?? "[]";
-    console.log(`✅ OpenAI responded in ${Date.now() - aiStart}ms, length: ${text.length}`);
-    const cleaned = text.replace(/```json|```/g, "").trim();
+    const rawText = response.output_text ?? "[]";
+    const cleaned = rawText.replace(/```json|```/g, "").trim();
 
-    let parsed: any[] = [];
-    try { 
+    let parsed: unknown;
+    try {
       parsed = JSON.parse(cleaned);
-      console.log("Successfully parsed", parsed.length, "cards");
-    } catch(err) { 
-      console.error("Failed to parse OpenAI response:", err);
-      parsed = []; 
+      console.log("✅ Parsed structured response");
+    } catch (err) {
+      console.error("Failed to parse JSON response from OpenAI:", err);
+      parsed = [];
     }
 
-    const now = new Date().toISOString();
-    const normalized = (Array.isArray(parsed) ? parsed : [])
-      .slice(0, 6)
-      .map((c: any, i: number): Card => ({
-        id: String(c?.id ?? `card-${i}`),
-        headline: String(c?.headline ?? "Untitled"),
-        summary: String(c?.summary ?? ""),
-        bullets: Array.isArray(c?.bullets) ? c.bullets.slice(0, 3).map(String) : [],
-        category: ["top","local","weather","markets","sports","tech"].includes(c?.category) ? c.category : "top",
-        timestamp: c?.timestamp ?? now,
-        citations: Array.isArray(c?.citations) ? c.citations.slice(0, 6).map(String) : [],
-      }));
+    const fallbackTimestamp = requestDate.toISOString();
+    const normalized = Array.isArray(parsed) ? parsed : [];
 
-    const result = normalized.slice(0, 6);
-    console.log(`🎉 Total fetch time: ${Date.now() - startTime}ms, returning ${result.length} cards`);
-    return result;
-  } catch (e) {
-    console.error("❌ Hackathon fetch error:", e);
+    const cards = normalized.slice(0, CATEGORY_ORDER.length).map((item, idx) => {
+      const fallbackCategory = CATEGORY_ORDER[idx] ?? "top";
+      const record = (item ?? {}) as Record<string, unknown>;
+
+      const bullets = toStringArray(record.bullets, 3);
+      if (bullets.length === 1) {
+        const summaryLead = coerceString(record.summary).split(". ")[0]?.trim();
+        if (summaryLead) bullets.push(summaryLead);
+      }
+
+      const rawCitations = toStringArray(record.citations, 6);
+      const seenCitations = new Set<string>();
+      let citations = rawCitations
+        .map(formatCitationEntry)
+        .filter((entry) => {
+          if (!entry) return false;
+          if (seenCitations.has(entry)) return false;
+          seenCitations.add(entry);
+          return true;
+        });
+
+      if (citations.length === 0) {
+        const fallbackSource =
+          coerceString(
+            (record as Record<string, unknown>).source ??
+              (record as Record<string, unknown>).outlet ??
+              (record as Record<string, unknown>).publication,
+          ) || "";
+        const fallbackUrl =
+          coerceString(
+            (record as Record<string, unknown>).url ??
+              (record as Record<string, unknown>).article_url ??
+              (record as Record<string, unknown>).link,
+          ) || "";
+        if (fallbackUrl) {
+          citations = [
+            formatCitationEntry(
+              fallbackSource ? `${fallbackSource} — ${fallbackUrl}` : fallbackUrl,
+            ),
+          ].filter(Boolean);
+        }
+      }
+
+      return {
+        id: coerceString(record.id, `card-${idx}`),
+        headline: coerceString(record.headline, "Untitled"),
+        summary: coerceString(record.summary),
+        bullets,
+        category: normalizeCategory(record.category, fallbackCategory),
+        timestamp: coerceString(record.timestamp, fallbackTimestamp),
+        citations,
+      } satisfies Card;
+    });
+
+    // If the model returned fewer than 6 cards, pad with empty shells to keep UI stable.
+    while (cards.length < CATEGORY_ORDER.length) {
+      const idx = cards.length;
+      cards.push({
+        id: `card-${idx}`,
+        headline: "Briefing update unavailable",
+        summary: "The latest update for this category is still loading.",
+        bullets: [],
+        category: CATEGORY_ORDER[idx] ?? "top",
+        timestamp: fallbackTimestamp,
+        citations: [],
+      });
+    }
+
+    console.log(`🎉 Total fetch time: ${Date.now() - startTime}ms, returning ${cards.length} cards`);
+    return cards.slice(0, CATEGORY_ORDER.length);
+  } catch (error) {
+    console.error("❌ OpenAI web search fetch error:", error);
     return [];
   }
 }

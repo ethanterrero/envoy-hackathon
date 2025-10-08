@@ -126,7 +126,7 @@ export default function App() {
 
         <main className="flex-1 px-6 pb-20 sm:px-12 lg:px-20">
           {leadCard ? (
-            <section className="mx-auto max-w-4xl">
+            <section className="mx-auto max-w-5xl">
               <article
                 key={leadCard.id ?? leadIndex}
                 className="animate-fade-slide-up rounded-[32px] bg-white p-10 text-left shadow-2xl shadow-slate-900/5 ring-1 ring-slate-200/70"
@@ -137,7 +137,6 @@ export default function App() {
                   >
                     {leadCard.category}
                   </span>
-                  <span className="text-slate-400">Lead Story</span>
                 </div>
                 <h2 className="mt-6 text-4xl font-semibold leading-tight text-slate-900 sm:text-5xl">
                   {leadCard.headline}
