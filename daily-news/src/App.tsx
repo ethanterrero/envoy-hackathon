@@ -101,10 +101,6 @@ export default function App() {
               <h1 className="mt-4 text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl">
                 Workplace Daily Briefing
               </h1>
-              <p className="mt-4 max-w-xl text-base text-slate-600 sm:text-lg">
-                Today’s curated headlines for every Envoy workplace team. Designed for ambient
-                displays—no interaction required, just the signals that matter.
-              </p>
             </div>
             <div className="text-right">
               <div className="text-xs font-semibold uppercase tracking-[0.4em] text-slate-400">
