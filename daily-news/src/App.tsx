@@ -47,6 +47,7 @@ function relativeTimeFrom(timestamp: string | undefined, now: Date) {
 
 export default function App() {
   const [cards, setCards] = useState<Card[]>([]);
+  const [leadIndex, setLeadIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(() => new Date());
 
@@ -54,6 +55,7 @@ export default function App() {
     const init = async () => {
       const fresh = await fetchDailyNews();
       setCards(fresh);
+      setLeadIndex(0);
       setLoading(false);
     };
     init();
@@ -64,9 +66,21 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  const leadCard = cards[0];
-  const secondaryCards = cards.slice(1, 3);
-  const gridCards = cards.slice(3);
+  useEffect(() => {
+    if (leadIndex < cards.length) return;
+    setLeadIndex(0);
+  }, [cards.length, leadIndex]);
+
+  useEffect(() => {
+    if (cards.length <= 1) return;
+    const id = setInterval(
+      () => setLeadIndex((prev) => (prev + 1) % cards.length),
+      20000,
+    );
+    return () => clearInterval(id);
+  }, [cards]);
+
+  const leadCard = cards[leadIndex];
 
   const categories = useMemo(
     () => Array.from(new Set(cards.map((card) => card.category))),
@@ -111,24 +125,12 @@ export default function App() {
             </div>
           </div>
 
-          {categories.length > 0 && (
-            <div className="mt-10 flex flex-wrap gap-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-              {categories.map((category) => (
-                <span
-                  key={category}
-                  className="inline-flex items-center rounded-full bg-white/80 px-4 py-2 text-slate-600 shadow-sm ring-1 ring-slate-200"
-                >
-                  {category}
-                </span>
-              ))}
-            </div>
-          )}
         </header>
 
         <main className="flex-1 px-6 pb-20 sm:px-12 lg:px-20">
           {leadCard ? (
-            <section className="grid gap-10 xl:grid-cols-[2fr,1fr]">
-              <article className="rounded-[32px] bg-white p-10 shadow-2xl shadow-slate-900/5 ring-1 ring-slate-200/70">
+            <section className="mx-auto max-w-4xl">
+              <article className="rounded-[32px] bg-white p-10 text-left shadow-2xl shadow-slate-900/5 ring-1 ring-slate-200/70">
                 <div className="flex items-center gap-4 text-xs font-semibold uppercase tracking-[0.35em] text-slate-500">
                   <span
                     className={`inline-flex items-center rounded-full px-4 py-1 tracking-widest ${getCategoryStyle(leadCard.category)}`}
@@ -159,89 +161,12 @@ export default function App() {
                   </span>
                 </div>
               </article>
-
-              <aside className="flex flex-col gap-6">
-                <div className="rounded-[28px] bg-white/70 p-8 shadow-xl shadow-slate-900/5 ring-1 ring-white/60 backdrop-blur">
-                  <p className="text-xs font-semibold uppercase tracking-[0.45em] text-[#ff4f00]">
-                    Envoy Pulse
-                  </p>
-                  <p className="mt-4 text-lg font-medium text-slate-700">
-                    The latest signals teams should know before doors open.
-                  </p>
-                  <p className="mt-3 text-sm text-slate-500">
-                    Keep facilities, security, and workplace leaders aligned with a quick glance.
-                    Designed to run continuously on lobby and operations displays.
-                  </p>
-                </div>
-
-                {secondaryCards.map((card) => (
-                  <div
-                    key={card.id}
-                    className="rounded-[28px] bg-white p-7 shadow-xl shadow-slate-900/5 ring-1 ring-slate-200/70"
-                  >
-                    <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                      <span className={`rounded-full px-4 py-1 ${getCategoryStyle(card.category)}`}>
-                        {card.category}
-                      </span>
-                      <span>{relativeTimeFrom(card.timestamp, now) ?? "Today"}</span>
-                    </div>
-                    <h3 className="mt-5 text-xl font-semibold text-slate-900">{card.headline}</h3>
-                    <p className="mt-3 text-sm leading-relaxed text-slate-600">
-                      {card.summary}
-                    </p>
-                    {card.citations.length > 0 && (
-                      <p className="mt-4 text-xs uppercase tracking-wide text-slate-400">
-                        {card.citations.join(" • ")}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </aside>
             </section>
           ) : (
             <section className="rounded-[32px] bg-white p-12 text-center shadow-2xl shadow-slate-900/5 ring-1 ring-slate-200/70">
               <p className="text-lg text-slate-500">
                 No stories yet. The Envoy briefing will populate once morning feeds are available.
               </p>
-            </section>
-          )}
-
-          {gridCards.length > 0 && (
-            <section className="mt-16">
-              <div className="text-xs font-semibold uppercase tracking-[0.45em] text-slate-400">
-                Across the Workplace
-              </div>
-              <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {gridCards.map((card) => (
-                  <article
-                    key={card.id}
-                    className="relative overflow-hidden rounded-[28px] bg-white p-8 shadow-xl shadow-slate-900/5 ring-1 ring-slate-200/70"
-                  >
-                    <span
-                      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.35em] ${getCategoryStyle(card.category)}`}
-                    >
-                      {card.category}
-                    </span>
-                    <h3 className="mt-5 text-2xl font-semibold text-slate-900">{card.headline}</h3>
-                    <p className="mt-3 text-sm leading-relaxed text-slate-600">
-                      {card.summary}
-                    </p>
-                    <ul className="mt-5 space-y-3 text-xs text-slate-500">
-                      {card.bullets.map((bullet, index) => (
-                        <li key={index} className="flex gap-2">
-                          <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-300" />
-                          <span>{bullet}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    {card.citations.length > 0 && (
-                      <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.35em] text-slate-400">
-                        {card.citations.join(" • ")}
-                      </p>
-                    )}
-                  </article>
-                ))}
-              </div>
             </section>
           )}
         </main>
