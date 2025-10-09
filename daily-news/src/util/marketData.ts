@@ -46,6 +46,7 @@ function getCachedData(): TickerItem[] | null {
   }
 }
 
+
 // Helper function to set cached data
 function setCachedData(data: TickerItem[]): void {
   try {
