@@ -100,11 +100,6 @@ export default function App() {
       {/* Market Ticker Bar */}
       <TickerBar />
 
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-40 -top-40 h-[28rem] w-[28rem] rounded-full bg-gradient-to-br from-[#ff8b69]/40 via-[#ff4f00]/20 to-transparent blur-3xl" />
-        <div className="absolute top-1/3 -right-44 h-[26rem] w-[26rem] rounded-full bg-gradient-to-br from-[#6b5bff]/30 via-[#c9c0ff]/20 to-transparent blur-3xl" />
-        <div className="absolute bottom-[-10rem] left-1/2 h-[24rem] w-[40rem] -translate-x-1/2 rounded-full bg-gradient-to-br from-[#ffb347]/25 via-[#ff6f61]/20 to-transparent blur-[160px]" />
-      </div>
 
       <div className="relative z-10 flex min-h-screen flex-col">
         <header className="px-6 py-10 sm:px-12 lg:px-20">
