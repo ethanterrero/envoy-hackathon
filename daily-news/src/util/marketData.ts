@@ -78,52 +78,81 @@ export async function fetchMarketData(): Promise<TickerItem[]> {
   }
 
   try {
-    console.log('🌐 Fetching fresh market data from Yahoo Finance...');
+    console.log('🌐 Fetching fresh market data from Alpha Vantage...');
 
-    // Yahoo Finance API - No API key required!
-    // This is a public endpoint that Yahoo provides for quote data
-    const symbols = DEMO_SYMBOLS.join(',');
-    const response = await fetch(
-      `/api/yahoo-finance/v7/finance/quote?symbols=${symbols}`
-    );
+    // Alpha Vantage API - requires API key
+    const apiKey = import.meta.env.VITE_ALPHA_VANTAGE_API_KEY;
 
-    if (!response.ok) {
-      throw new Error(`Yahoo Finance API error: ${response.status}`);
+    if (!apiKey) {
+      throw new Error('Alpha Vantage API key not configured. Please add VITE_ALPHA_VANTAGE_API_KEY to your .env file');
     }
 
-    const data = await response.json();
+    // Fetch data for each symbol individually (Alpha Vantage free tier: 5 calls/min, 100/day)
+    const marketDataPromises = DEMO_SYMBOLS.map(async (symbol) => {
+      try {
+        const response = await fetch(
+          `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`,
+          {
+            mode: 'cors'
+          }
+        );
 
-    // Transform Yahoo's response format to our TickerItem interface
-    const marketData = data.quoteResponse.result.map((item: any) => ({
-      symbol: item.symbol,
-      name: getCompanyName(item.symbol),
-      price: item.regularMarketPrice || 0,
-      change: item.regularMarketChange || 0,
-      changePercent: item.regularMarketChangePercent || 0,
-    }));
+        if (!response.ok) {
+          throw new Error(`Alpha Vantage API error for ${symbol}: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Alpha Vantage returns data in 'Global Quote' field
+        const quote = data['Global Quote'];
+
+        if (!quote) {
+          console.warn(`No quote data found for ${symbol}`);
+          return null;
+        }
+
+        return {
+          symbol: quote['01. symbol'],
+          name: getCompanyName(quote['01. symbol']),
+          price: parseFloat(quote['05. price']) || 0,
+          change: parseFloat(quote['09. change']) || 0,
+          changePercent: parseFloat(quote['10. change percent'].replace('%', '')) || 0,
+        };
+      } catch (error) {
+        console.error(`Failed to fetch data for ${symbol}:`, error);
+        return null;
+      }
+    });
+
+    // Wait for all API calls to complete
+    const results = await Promise.all(marketDataPromises);
+
+    // Filter out failed requests and create market data array
+    const marketData = results.filter((result): result is TickerItem => result !== null);
+
+    if (marketData.length === 0) {
+      throw new Error('All API requests failed');
+    }
 
     // Cache the fresh data for 10 minutes
     setCachedData(marketData);
 
-    console.log('✅ Fresh market data fetched and cached');
+    console.log(`✅ Fresh market data fetched and cached for ${marketData.length}/${DEMO_SYMBOLS.length} symbols`);
     return marketData;
 
   } catch (error) {
     console.error('❌ Market data fetch failed:', error);
 
-    // Fallback to simulated data if API fails
-    console.log('🔄 Falling back to simulated market data');
-    await new Promise(resolve => setTimeout(resolve, 200));
+    // Try to return cached data if available
+    const cachedData = getCachedData();
+    if (cachedData && cachedData.length > 0) {
+      console.log('🔄 Using cached market data due to API failure');
+      return cachedData;
+    }
 
-    const fallbackData = DEMO_SYMBOLS.map((symbol, index) => ({
-      symbol,
-      name: getCompanyName(symbol),
-      price: 100 + Math.random() * 800,
-      change: (Math.random() - 0.5) * 20,
-      changePercent: (Math.random() - 0.5) * 8,
-    }));
-
-    return fallbackData;
+    // If no cached data either, throw error to show no data available
+    console.error('🚨 No market data available - both API and cache failed');
+    throw new Error('Unable to fetch market data. Please check your Alpha Vantage API key and internet connection.');
   }
 }
 

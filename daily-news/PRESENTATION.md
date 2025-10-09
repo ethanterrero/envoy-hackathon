@@ -21,38 +21,99 @@ Present the AI-powered daily news briefing application that transforms how execu
 - **Target Audience**: Busy executives, managers, and business professionals
 - **Key Differentiator**: AI validates all articles are from TODAY, not yesterday's news
 
-**Technical Stack**:
-- Frontend: React 19 + TypeScript + Vite
-- Styling: Tailwind CSS v4
-- AI: OpenAI GPT-4 with web search capabilities
-- Architecture: Single-page application with real-time updates
+**Technical Stack & Setup**:
+- **Frontend**: React 19 + TypeScript + Vite (builds to static files)
+- **Styling**: Tailwind CSS v4 (utility-first, responsive design)
+- **AI Engine**: OpenAI GPT-4.1-mini with web search capabilities
+- **Market Data**: Alpha Vantage API (real-time stock prices)
+- **Deployment**: Ready for Vercel/Netlify static hosting
+
+**File Structure** (`/daily-news/`):
+```
+daily-news/
+├── src/
+│   ├── components/TickerBar.tsx    # Live market data display
+│   ├── util/
+│   │   ├── fetchDailyNews.ts       # AI news curation engine
+│   │   └── marketData.ts           # Real-time market data fetching
+│   ├── App.tsx                     # Main application component
+│   └── main.tsx                    # React entry point
+├── public/                         # Static assets (favicons, etc.)
+├── .env                           # API keys (not in git)
+└── package.json                   # Dependencies & scripts
+```
 
 ### 3. Deep Dive - Technical Implementation (5 minutes)
 **How the Magic Happens**
 
 **The Two Core Files**:
 
-1. **`fetchDailyNews.ts`** - The AI Orchestrator
+1. **`fetchDailyNews.ts`** - The AI Orchestrator (296 lines)
    ```typescript
-   // Uses OpenAI's web search to find current news
-   // Validates publication dates are TODAY
-   // Ensures 6 different categories, 6 different sources
+   // AI-powered news curation with web search
+   // Validates publication dates are TODAY only
+   // Excludes Wikipedia (-site:wikipedia.org)
    // Returns structured JSON with headlines, summaries, bullets, citations
    ```
 
-2. **`App.tsx`** - The Experience Layer
+2. **`marketData.ts`** - Real-Time Market Data (172 lines)
    ```typescript
-   // Auto-rotating carousel (20-second intervals)
-   // Real-time relative timestamps ("2 hours ago")
-   // Responsive design with gradient backgrounds
-   // Loading states and error handling
+   // Alpha Vantage API integration for live stock prices
+   // Intelligent caching (10-minute refresh cycles)
+   // Automatic fallbacks to cached data if API fails
+   // Real-time ticker bar updates
    ```
 
-**AI Integration Highlights**:
-- **Structured JSON Schema**: Ensures reliable data parsing
-- **Web Search Validation**: Only current articles make it through
-- **Citation Formatting**: "Publication — https://url" format
-- **Error Handling**: Graceful fallbacks when API fails
+**Core Architecture**:
+- **`App.tsx`**: Main component with auto-rotating carousel (20s intervals)
+- **`TickerBar.tsx`**: Live market data display component
+- **Real-time Features**: Updates every 30 seconds, timestamps refresh automatically
+
+**API Integration**:
+- **OpenAI GPT-4.1-mini**: News curation and web search
+- **Alpha Vantage**: Real-time stock prices and market data
+- **Intelligent Caching**: 10-minute cache for API rate limit compliance
+
+**Setup Requirements**:
+- **Environment Variables**: `.env` file with API keys
+- **No Database**: Client-side only, perfect for static hosting
+- **CDN Ready**: All external APIs, no server required
+
+### 3.5 Setup & Configuration (3 minutes)
+**Getting Started - Development Setup**
+
+**Prerequisites**:
+- Node.js 18+ and npm (or yarn/pnpm)
+- Code editor (VS Code recommended)
+- Git repository access
+
+**Quick Start** (5 minutes):
+```bash
+# 1. Clone and navigate
+git clone <repository-url>
+cd daily-news
+
+# 2. Install dependencies
+npm install
+
+# 3. Set up API keys in .env file
+# VITE_OPENAI_API_KEY=your_key_here
+# VITE_ALPHA_VANTAGE_API_KEY=your_key_here
+
+# 4. Start development server
+npm run dev
+# → Opens http://localhost:5173
+```
+
+**API Key Setup**:
+1. **OpenAI**: Get key from https://platform.openai.com/api-keys
+2. **Alpha Vantage**: Get free key from https://www.alphavantage.co/support/#api-key
+3. **Add to `.env`** (file is gitignored for security)
+
+**Production Deployment**:
+- **Vercel/Netlify**: Drag & drop the `dist` folder
+- **No build step needed**: Uses Vite for static generation
+- **CDN-friendly**: All API calls are external, no server required
 
 ### 4. Feature Demonstration (5 minutes)
 **Walk Through the User Experience**
@@ -84,9 +145,12 @@ Present the AI-powered daily news briefing application that transforms how execu
 | Challenge | Solution |
 |-----------|----------|
 | **Stale News Problem** | OpenAI web search with date validation |
+| **Wikipedia Contamination** | Automated exclusion (-site:wikipedia.org) + validation/replacement |
 | **Unstructured AI Responses** | Strict JSON schema enforcement |
 | **Citation Consistency** | Automated formatting with fallback logic |
 | **API Rate Limiting** | Intelligent caching system (10-minute refresh cycle) |
+| **CORS Limitations** | Vite proxy configuration for external APIs |
+| **Environment Setup** | Clear .env template with required API keys |
 | **Real-time Updates** | React state management with intervals |
 | **Cross-device Experience** | Responsive Tailwind CSS implementation |
 
@@ -138,17 +202,25 @@ Present the AI-powered daily news briefing application that transforms how execu
 - [ ] Integration with calendar/scheduling tools
 
 **Technical Improvements**:
-- [ ] Caching layer for better performance
-- [ ] Multi-language support
-- [ ] Advanced filtering options
+- [ ] Enhanced caching strategies for offline support
+- [ ] Multi-language support for global audiences
+- [ ] Advanced filtering options (by source, category, date)
 - [ ] Analytics dashboard for engagement metrics
+
+**Deployment & Scaling**:
+- [ ] One-click deployment to Vercel/Netlify
+- [ ] CDN optimization for global performance
+- [ ] Mobile app wrapper (PWA capabilities)
+- [ ] Enterprise API rate limit management
 
 ### 9. Q&A (3 minutes)
 **Anticipated Questions**:
-- *"How do you ensure news quality?"* → Date validation + citation requirements
-- *"What if OpenAI API fails?"* → Graceful error handling with fallbacks
-- *"Can it be customized?"* → Architecture supports easy category modification
-- *"How often does it update?"* → Real-time fetching with each page load
+- *"How do you ensure news quality?"* → Date validation + citation requirements + Wikipedia exclusion
+- *"What if OpenAI API fails?"* → Intelligent caching + graceful error handling with cached data fallbacks
+- *"Can it be customized?"* → Architecture supports easy category modification and personalization
+- *"How often does it update?"* → Real-time fetching with 10-minute cache cycles for API efficiency
+- *"What's needed to run this?"* → Just Node.js, API keys in .env file, 5-minute setup
+- *"Can it work offline?"* → Intelligent caching provides recent data even without internet
 
 ---
 
@@ -157,26 +229,32 @@ Present the AI-powered daily news briefing application that transforms how execu
 ### Presentation Slides
 1. **Title Slide**: Project name with live screenshot
 2. **Problem/Solution**: Before/after comparison
-3. **Architecture Diagram**: Two-file structure visualization
-4. **Feature Matrix**: Category breakdown with examples
-5. **Technical Stack**: Logo collage
-6. **Demo Screenshots**: Mobile and desktop views
-7. **Future Roadmap**: Timeline visualization
+3. **File Structure**: Visual directory tree with key files highlighted
+4. **Architecture Diagram**: Two-core-file structure + API integrations
+5. **Setup Flowchart**: 5-minute setup process visualization
+6. **Feature Matrix**: Category breakdown with examples
+7. **Technical Stack**: Logo collage with API service highlights
+8. **Demo Screenshots**: Mobile and desktop views
+9. **Deployment Options**: Vercel/Netlify/CDN comparison
+10. **Future Roadmap**: Timeline visualization
 
 ### Live Demo Materials
 - **Laptop**: Show the actual application running
 - **Mobile Device**: Demonstrate responsive design
-- **Network Tab**: Show API calls and JSON responses
-- **Error Scenarios**: Demonstrate graceful failure handling
+- **Network Tab**: Show API calls and caching behavior
+- **Terminal Window**: Demonstrate `npm run dev` startup
+- **Error Scenarios**: Show graceful failure handling with cached data
+- **Browser Console**: Display real-time API logging
 
 ---
 
 ## ⏱️ Timing & Pacing
 
-**Total Presentation Time**: 25-30 minutes
+**Total Presentation Time**: 28-33 minutes
 - **Opening Hook**: 2 min
 - **Overview**: 3 min
 - **Technical Deep Dive**: 5 min
+- **Setup & Configuration**: 3 min
 - **Feature Demo**: 5 min
 - **Challenges/Solutions**: 3 min
 - **Business Impact**: 3 min
