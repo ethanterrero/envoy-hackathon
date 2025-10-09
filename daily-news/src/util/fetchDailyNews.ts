@@ -170,6 +170,13 @@ function formatCitationEntry(raw: string): string {
 export async function fetchDailyNews(): Promise<Card[]> {
   const startTime = Date.now();
   const requestDate = new Date();
+  const prettyDate = requestDate.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
   try {
     const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
     if (!apiKey) {

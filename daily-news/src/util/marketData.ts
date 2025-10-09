@@ -170,3 +170,14 @@ function getCompanyName(symbol: string): string {
   };
   return companyNames[symbol] || symbol;
 }
+
+// Default ticker data for initial display (fallback when API fails)
+export function getDefaultTickers(): TickerItem[] {
+  return DEMO_SYMBOLS.map(symbol => ({
+    symbol,
+    name: getCompanyName(symbol),
+    price: 0, // Will be updated by API
+    change: 0,
+    changePercent: 0,
+  }));
+}
