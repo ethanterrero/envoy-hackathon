@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchDailyNews, type Card } from "./util/fetchDailyNews";
+import TickerBar from "./components/TickerBar";
 import "./index.css";
 
 const categoryStyles: Record<string, string> = {
@@ -96,6 +97,9 @@ export default function App() {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#f7f8fc] text-slate-900">
+      {/* Market Ticker Bar */}
+      <TickerBar />
+
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -left-40 -top-40 h-[28rem] w-[28rem] rounded-full bg-gradient-to-br from-[#ff8b69]/40 via-[#ff4f00]/20 to-transparent blur-3xl" />
         <div className="absolute top-1/3 -right-44 h-[26rem] w-[26rem] rounded-full bg-gradient-to-br from-[#6b5bff]/30 via-[#c9c0ff]/20 to-transparent blur-3xl" />
