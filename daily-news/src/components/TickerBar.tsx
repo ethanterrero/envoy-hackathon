@@ -20,13 +20,11 @@ export default function TickerBar() {
   };
 
   useEffect(() => {
-    // Fetch initial data
+    // Fetch initial data once on mount
     refreshMarketData();
-
-    // Update every 30 seconds (but API calls will be cached for 10 minutes)
-    const interval = setInterval(refreshMarketData, 30000);
-
-    return () => clearInterval(interval);
+    
+    // Data will be cached and only refresh at 8am daily
+    // No need for frequent polling since cache handles it
   }, []);
 
   const TickerItem = ({ ticker, index, isDuplicate = false }: { ticker: TickerItem; index: number; isDuplicate?: boolean }) => (

@@ -1,3 +1,5 @@
+import { getCachedData, setCachedData, clearCachedData } from './cache';
+
 // For demo purposes - replace with real API integration
 const DEMO_SYMBOLS = [
   "SPY", "QQQ", "AAPL", "MSFT", "GOOGL", "TSLA", "NVDA", "META"
@@ -14,66 +16,16 @@ export interface TickerItem {
 
 // Cache configuration
 const CACHE_KEY = 'envoy_market_data_cache';
-const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes in milliseconds
-
-interface CacheData {
-  data: TickerItem[];
-  timestamp: number;
-}
-
-// Helper function to get cached data
-function getCachedData(): TickerItem[] | null {
-  try {
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (!cached) return null;
-
-    const cacheData: CacheData = JSON.parse(cached);
-    const now = Date.now();
-
-    // Check if cache is still valid (within 10 minutes)
-    if (now - cacheData.timestamp < CACHE_DURATION) {
-      console.log('📈 Using cached market data (fresh)');
-      return cacheData.data;
-    }
-
-    // Cache expired, remove it
-    localStorage.removeItem(CACHE_KEY);
-    console.log('📈 Cache expired, fetching fresh data');
-    return null;
-  } catch (error) {
-    console.error('Error reading cache:', error);
-    return null;
-  }
-}
-
-
-// Helper function to set cached data
-function setCachedData(data: TickerItem[]): void {
-  try {
-    const cacheData: CacheData = {
-      data,
-      timestamp: Date.now()
-    };
-    localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
-    console.log('💾 Market data cached');
-  } catch (error) {
-    console.error('Error setting cache:', error);
-  }
-}
+const CACHE_OPTIONS = { key: CACHE_KEY, refreshHour: 8 };
 
 // Helper function to clear cached data (useful for development)
 export function clearMarketDataCache(): void {
-  try {
-    localStorage.removeItem(CACHE_KEY);
-    console.log('🗑️ Market data cache cleared');
-  } catch (error) {
-    console.error('Error clearing cache:', error);
-  }
+  clearCachedData(CACHE_OPTIONS);
 }
 
 export async function fetchMarketData(): Promise<TickerItem[]> {
   // First, check if we have valid cached data
-  const cachedData = getCachedData();
+  const cachedData = getCachedData<TickerItem[]>(CACHE_OPTIONS);
   if (cachedData) {
     return cachedData;
   }
@@ -135,17 +87,17 @@ export async function fetchMarketData(): Promise<TickerItem[]> {
       throw new Error('All API requests failed');
     }
 
-    // Cache the fresh data for 10 minutes
-    setCachedData(marketData);
+    // Cache the fresh data until tomorrow at 8am
+    setCachedData(marketData, CACHE_OPTIONS);
 
-    console.log(`✅ Fresh market data fetched and cached for ${marketData.length}/${DEMO_SYMBOLS.length} symbols`);
+    console.log(`✅ Fresh market data fetched for ${marketData.length}/${DEMO_SYMBOLS.length} symbols`);
     return marketData;
 
   } catch (error) {
     console.error('❌ Market data fetch failed:', error);
 
-    // Try to return cached data if available
-    const cachedData = getCachedData();
+    // Try to return cached data if available (even if expired)
+    const cachedData = getCachedData<TickerItem[]>(CACHE_OPTIONS);
     if (cachedData && cachedData.length > 0) {
       console.log('🔄 Using cached market data due to API failure');
       return cachedData;

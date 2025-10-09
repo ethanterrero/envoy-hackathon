@@ -1,4 +1,49 @@
-# React + TypeScript + Vite
+# Envoy Daily Briefing
+
+A modern daily news briefing application built with React, TypeScript, and Vite. Displays curated news across multiple categories (top stories, tech, sports, markets, local, weather) with live market data.
+
+## Features
+
+- 📰 Real-time news from NewsAPI.org across 6 categories
+- 🤖 AI-powered summarization using OpenAI
+- 📊 Live market ticker with intelligent caching
+- ⚡ Fast, responsive UI built with React + Vite
+- 🎨 Beautiful Tailwind CSS design
+
+## Setup
+
+1. **Clone the repository**
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Configure environment variables**
+   
+   Copy `.env.example` to `.env` and add your API keys:
+   ```bash
+   cp .env.example .env
+   ```
+   
+   Required API keys:
+   - **VITE_OPENAI_API_KEY**: Get from [OpenAI](https://platform.openai.com/api-keys)
+   - **VITE_NEWSAPI_KEY**: Get from [NewsAPI.org](https://newsapi.org/register) (free tier: 100 requests/day)
+   - **VITE_ALPHA_VANTAGE_API_KEY** (optional): Get from [Alpha Vantage](https://www.alphavantage.co/support/#api-key)
+
+4. **Run the development server**
+   ```bash
+   npm run dev
+   ```
+
+## Architecture
+
+- **News Fetching**: NewsAPI.org provides real-time articles (cached for 30 minutes)
+- **Summarization**: OpenAI GPT-4o-mini curates and summarizes articles
+- **Market Data**: Alpha Vantage API (cached for 10 minutes)
+- **Caching**: Smart localStorage caching to minimize API calls
+
+## Original Vite Template Info
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
