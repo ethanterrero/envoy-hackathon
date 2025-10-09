@@ -90,6 +90,7 @@ Search Instructions:
 - Do NOT cite or use Wikipedia as a source under any circumstances.
 - If search results are dominated by Wikipedia, broaden your query by adding reputable outlet names (Reuters, AP, Bloomberg, WSJ, FT, The Verge, TechCrunch) while maintaining the ${isoDate} date filter.
 
+
 Constraints:
 1. Categories (exactly one card each, in this order):
    - top: major national or global development with workplace impact.
