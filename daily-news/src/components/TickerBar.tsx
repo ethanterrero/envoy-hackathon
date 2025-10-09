@@ -1,20 +1,9 @@
 import { useState, useEffect } from "react";
-import { fetchMarketData } from "../util/marketData";
+import { fetchMarketData, getDefaultTickers } from "../util/marketData";
 import type { TickerItem } from "../util/marketData";
 
-const DEFAULT_TICKERS: TickerItem[] = [
-  { symbol: "SPY", name: "S&P 500 ETF", price: 425.50, change: 2.15, changePercent: 0.51 },
-  { symbol: "QQQ", name: "Nasdaq 100 ETF", price: 385.20, change: -1.80, changePercent: -0.47 },
-  { symbol: "AAPL", name: "Apple Inc.", price: 175.25, change: 3.45, changePercent: 2.01 },
-  { symbol: "MSFT", name: "Microsoft Corp.", price: 378.85, change: -2.15, changePercent: -0.56 },
-  { symbol: "GOOGL", name: "Alphabet Inc.", price: 142.65, change: 1.85, changePercent: 1.31 },
-  { symbol: "TSLA", name: "Tesla Inc.", price: 248.50, change: -5.25, changePercent: -2.07 },
-  { symbol: "NVDA", name: "NVIDIA Corp.", price: 875.30, change: 12.45, changePercent: 1.44 },
-  { symbol: "META", name: "Meta Platforms", price: 485.75, change: 6.90, changePercent: 1.44 },
-];
-
 export default function TickerBar() {
-  const [tickerData, setTickerData] = useState<TickerItem[]>(DEFAULT_TICKERS);
+  const [tickerData, setTickerData] = useState<TickerItem[]>(getDefaultTickers());
   const [isLoading, setIsLoading] = useState(false);
 
   const refreshMarketData = async () => {
@@ -31,66 +20,49 @@ export default function TickerBar() {
   };
 
   useEffect(() => {
-    // Fetch initial data
+    // Fetch initial data once on mount
     refreshMarketData();
-
-    // Update every 30 seconds (but API calls will be cached for 10 minutes)
-    const interval = setInterval(refreshMarketData, 30000);
-
-    return () => clearInterval(interval);
+    
+    // Data will be cached and only refresh at 8am daily
+    // No need for frequent polling since cache handles it
   }, []);
+
+  const TickerItem = ({ ticker, index, isDuplicate = false }: { ticker: TickerItem; index: number; isDuplicate?: boolean }) => (
+    <div key={`${ticker.symbol}-${isDuplicate ? 'dup-' : ''}${index}`} className="flex items-center gap-3 text-sm">
+      <span className="font-semibold text-white">{ticker.symbol}</span>
+      <span className="text-slate-300">{ticker.price.toFixed(2)}</span>
+      <span
+        className={`font-medium ${
+          ticker.change >= 0 ? 'text-green-400' : 'text-red-400'
+        }`}
+      >
+        {ticker.change >= 0 ? '+' : ''}
+        {ticker.change.toFixed(2)}
+      </span>
+      <span
+        className={`font-medium ${
+          ticker.changePercent >= 0 ? 'text-green-400' : 'text-red-400'
+        }`}
+      >
+        ({ticker.changePercent >= 0 ? '+' : ''}
+        {ticker.changePercent.toFixed(2)}%)
+      </span>
+    </div>
+  );
 
   return (
     <div className="bg-slate-900 text-white py-2 overflow-hidden">
       <div className="flex animate-scroll-left">
         <div className="flex items-center gap-8 px-4 whitespace-nowrap">
           {tickerData.map((ticker, index) => (
-            <div key={`${ticker.symbol}-${index}`} className="flex items-center gap-3 text-sm">
-              <span className="font-semibold text-white">{ticker.symbol}</span>
-              <span className="text-slate-300">{ticker.price.toFixed(2)}</span>
-              <span
-                className={`font-medium ${
-                  ticker.change >= 0 ? 'text-green-400' : 'text-red-400'
-                }`}
-              >
-                {ticker.change >= 0 ? '+' : ''}
-                {ticker.change.toFixed(2)}
-              </span>
-              <span
-                className={`font-medium ${
-                  ticker.changePercent >= 0 ? 'text-green-400' : 'text-red-400'
-                }`}
-              >
-                ({ticker.changePercent >= 0 ? '+' : ''}
-                {ticker.changePercent.toFixed(2)}%)
-              </span>
-            </div>
+            <TickerItem key={`${ticker.symbol}-${index}`} ticker={ticker} index={index} />
           ))}
         </div>
 
         {/* Duplicate for seamless scroll */}
         <div className="flex items-center gap-8 px-4 whitespace-nowrap">
           {tickerData.map((ticker, index) => (
-            <div key={`${ticker.symbol}-dup-${index}`} className="flex items-center gap-3 text-sm">
-              <span className="font-semibold text-white">{ticker.symbol}</span>
-              <span className="text-slate-300">{ticker.price.toFixed(2)}</span>
-              <span
-                className={`font-medium ${
-                  ticker.change >= 0 ? 'text-green-400' : 'text-red-400'
-                }`}
-              >
-                {ticker.change >= 0 ? '+' : ''}
-                {ticker.change.toFixed(2)}
-              </span>
-              <span
-                className={`font-medium ${
-                  ticker.changePercent >= 0 ? 'text-green-400' : 'text-red-400'
-                }`}
-              >
-                ({ticker.changePercent >= 0 ? '+' : ''}
-                {ticker.changePercent.toFixed(2)}%)
-              </span>
-            </div>
+            <TickerItem key={`${ticker.symbol}-dup-${index}`} ticker={ticker} index={index} isDuplicate />
           ))}
         </div>
       </div>

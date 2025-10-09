@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { fetchNewsArticles, formatArticlesForLLM, type NewsByCategory } from "./fetchNewsArticles";
 
 export interface Card {
   id: string;
@@ -14,48 +15,9 @@ type Category = "top" | "tech" | "sports" | "markets" | "local" | "weather";
 
 const CATEGORY_ORDER: Category[] = ["top", "tech", "sports", "markets", "local", "weather"];
 
-const CARD_JSON_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["id", "headline", "summary", "bullets", "category", "timestamp", "citations"],
-  properties: {
-    id: { type: "string", minLength: 1 },
-    headline: { type: "string", minLength: 1, maxLength: 80 },
-    summary: { type: "string", minLength: 1, maxLength: 350 },
-    bullets: {
-      type: "array",
-      minItems: 2,
-      maxItems: 3,
-      items: { type: "string", minLength: 1, maxLength: 160 },
-    },
-    category: { type: "string", enum: CATEGORY_ORDER },
-    timestamp: { type: "string", format: "date-time" },
-    citations: {
-      type: "array",
-      minItems: 1,
-      maxItems: 6,
-      items: { type: "string", minLength: 1, maxLength: 500 },
-    },
-  },
-};
 
-const CARDS_ARRAY_SCHEMA = {
-  type: "array",
-  minItems: CATEGORY_ORDER.length,
-  maxItems: CATEGORY_ORDER.length,
-  items: CARD_JSON_SCHEMA,
-};
 
-const RESPONSE_JSON_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["cards"],
-  properties: {
-    cards: CARDS_ARRAY_SCHEMA,
-  },
-};
-
-function buildPrompts(requestDate: Date) {
+function buildPrompts(requestDate: Date, newsByCategory: NewsByCategory) {
   const isoDate = requestDate.toISOString().split("T")[0] ?? "";
   const prettyDate = requestDate.toLocaleDateString("en-US", {
     weekday: "long",
@@ -65,44 +27,66 @@ function buildPrompts(requestDate: Date) {
     timeZone: "UTC",
   });
 
-  const systemPrompt = `You are an Envoy newsroom editor with live web access. Today is ${prettyDate} and the current ISO date is ${isoDate}.
+  const systemPrompt = `You are an Envoy newsroom editor. Today is ${prettyDate} and the current ISO date is ${isoDate}.
 
 Your job is to build a six-card daily workplace briefing that executives can skim quickly.
 
-Non-negotiables:
-- You MUST run fresh web searches before answering so every card is grounded in reporting published on ${isoDate}. If a candidate article was not published on ${isoDate}, you must discard it and find one that was.
-- Do NOT use or cite Wikipedia. Exclude any URL matching *.wikipedia.org from your searches and citations.
-- In every search query, append: -site:wikipedia.org to exclude Wikipedia results.
-- Before final output, validate that no "source" field contains "wikipedia.org". If any do, replace the card.
-- If all top results are Wikipedia, broaden the query (add outlet names like "Reuters", "AP", "Bloomberg", "WSJ", "FT", "The Verge", "TechCrunch") while keeping the ${isoDate} filter.
+You will be provided with recent news articles for each category. Your task is to curate and summarize them into cards.
+
+CRITICAL REQUIREMENTS:
 - Return exactly six cards as JSON. Each card maps to one category: top, tech, sports, markets, local, weather.
-- Summaries must include concrete names, numbers, quotes, or dates pulled directly from the cited article.
-- Every card must include at least one citation formatted as "Outlet — https://link" that points to the article you used. Do not invent outlets or URLs and never return placeholder text like "source unavailable".
-- Bullet points are short (<= 20 words) factual highlights that extend the summary.
-- Timestamps are ISO 8601 strings using the article’s publish time on ${isoDate}. If the article does not list a publish time, use ${isoDate} with the current UTC time.
+- Create an engaging headline (<= 80 characters) that captures the essence of the story.
+- Write a clear summary (2-3 sentences, <= 350 characters) with concrete names, numbers, or key facts.
+- Provide 2-3 bullet points (<= 20 words each) with additional factual highlights.
+- ALWAYS include at least one citation formatted EXACTLY as "Source Name — https://url" using the article URLs provided.
+- NEVER return empty citations arrays. NEVER return "SOURCE UNAVAILABLE" or placeholders.
+- Use the article's published timestamp as the card timestamp.
+- Focus on workplace relevance and executive interests.
+- Avoid political news - focus on business, innovation, sports, and practical workplace topics.
 
-Return only a JSON object with a single property "cards" containing the array of card objects defined above. Do not add commentary.`;
+Return only a JSON object with a single property "cards" containing the array of card objects. Do not add commentary.`;
 
-  const userPrompt = `Produce the Envoy workplace briefing for ${prettyDate} using the OpenAI web search tool.
+  // Format articles for each category
+  const categoryPrompts = CATEGORY_ORDER.map((category) => {
+    const articles = newsByCategory[category] || [];
+    const articlesText = formatArticlesForLLM(articles);
+    
+    const categoryDescriptions: Record<Category, string> = {
+      top: "major national or global development with workplace impact",
+      tech: "technology, AI, or workplace tools",
+      sports: "headline moment, ideally with fan or business angle",
+      markets: "business, finance, or corporate operations trend",
+      local: "San Francisco Bay Area workplace, commuting, or civic update",
+      weather: "notable U.S. or global weather event affecting workplaces or travel",
+    };
+    
+    return `
+### ${category.toUpperCase()} NEWS (${categoryDescriptions[category]}):
+${articlesText || 'No articles available for this category.'}
+`.trim();
+  }).join('\n\n---\n\n');
 
-Search Instructions:
-- Append "-site:wikipedia.org" to every search query to exclude Wikipedia results.
-- Do NOT cite or use Wikipedia as a source under any circumstances.
-- If search results are dominated by Wikipedia, broaden your query by adding reputable outlet names (Reuters, AP, Bloomberg, WSJ, FT, The Verge, TechCrunch) while maintaining the ${isoDate} date filter.
+  const userPrompt = `Produce the Envoy workplace briefing for ${prettyDate} using the articles provided below.
 
+${categoryPrompts}
 
-Constraints:
-1. Categories (exactly one card each, in this order):
-   - top: major national or global development with workplace impact.
-   - tech: technology, AI, or workplace tools.
-   - sports: headline moment, ideally with fan or business angle.
-   - markets: business, finance, or corporate operations trend.
-   - local: San Francisco Bay Area workplace, commuting, or civic update.
-   - weather: notable U.S. or global weather event affecting workplaces or travel.
-2. Each card must cite a DIFFERENT publication. Verify the article publish date is ${isoDate} before citing it.
-3. Citations array must contain strings formatted exactly as "Outlet — https://link".
-4. Bullets must be 2 or 3 concise facts that add new detail beyond the summary.
-5. Headline <= 80 characters, summary 2–3 sentences (<= 350 characters).
+MANDATORY CONSTRAINTS:
+1. Create exactly one card for each category in this order: top, tech, sports, markets, local, weather.
+2. Use ONLY the articles provided above. Do not invent information.
+3. Choose the most relevant workplace-focused, non-political article from each category's list.
+4. Citations MUST use EXACTLY this format: "Source Name — https://url" 
+   - Example: "Reuters — https://reuters.com/article/123"
+   - Example: "TechCrunch — https://techcrunch.com/story"
+   - Extract the EXACT source name from the "Source:" field in the articles above
+   - Extract the EXACT URL from the "URL:" field in the articles above
+5. EVERY card MUST have at least one valid citation with both source name AND URL.
+6. DO NOT use category names as sources (e.g., "TOP NEWS", "TECH", etc.)
+7. If a category has no articles, use: ["News — https://news.envoy.com"]
+8. Headline <= 80 characters, summary <= 350 characters.
+9. 2-3 bullets per card, each <= 20 words.
+
+EXAMPLE CITATION FORMAT:
+citations: ["CNN — https://cnn.com/article/example"]
 
 Return only a JSON object with a single property "cards" that contains the array of card objects.`;
 
@@ -177,40 +161,37 @@ export async function fetchDailyNews(): Promise<Card[]> {
       return [];
     }
 
+    // Step 1: Fetch fresh news articles from NewsAPI
+    console.log("📰 Fetching news articles from NewsAPI...");
+    const newsByCategory = await fetchNewsArticles();
+
+    // Step 2: Use LLM to curate and summarize
     const client = new OpenAI({
       apiKey,
       dangerouslyAllowBrowser: true,
     });
 
-    const { systemPrompt, userPrompt } = buildPrompts(requestDate);
+    const { systemPrompt, userPrompt } = buildPrompts(requestDate, newsByCategory);
 
-    console.log("🌐 Fetching briefing via OpenAI web search…");
-    const response = await client.responses.create({
-      model: "gpt-4.1-mini",
+    console.log("🤖 Generating briefing summaries via OpenAI...");
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
       temperature: 0.2,
-      max_output_tokens: 1500,
-      text: {
-        format: {
-          type: "json_schema",
-          name: "daily_briefing",
-          strict: true,
-          schema: RESPONSE_JSON_SCHEMA,
-        },
-      },
-      tools: [{ type: "web_search" }],
-      input: [
+      max_tokens: 2000,
+      response_format: { type: "json_object" },
+      messages: [
         {
           role: "system",
-          content: [{ type: "input_text", text: systemPrompt }],
+          content: systemPrompt,
         },
         {
           role: "user",
-          content: [{ type: "input_text", text: userPrompt }],
+          content: userPrompt,
         },
       ],
     });
 
-    const rawText = response.output_text ?? "[]";
+    const rawText = response.choices[0]?.message?.content ?? "{}";
     const cleaned = rawText.replace(/```json|```/g, "").trim();
 
     let parsed: unknown;
@@ -219,7 +200,7 @@ export async function fetchDailyNews(): Promise<Card[]> {
       console.log("✅ Parsed structured response");
     } catch (err) {
       console.error("Failed to parse JSON response from OpenAI:", err);
-      parsed = [];
+      parsed = { cards: [] };
     }
 
     const fallbackTimestamp = requestDate.toISOString();
@@ -240,11 +221,21 @@ export async function fetchDailyNews(): Promise<Card[]> {
 
       const rawCitations = toStringArray(record.citations, 6);
       const seenCitations = new Set<string>();
+      const invalidSources = ['TOP NEWS', 'TOP', 'TECH NEWS', 'TECH', 'SPORTS NEWS', 'SPORTS', 'MARKETS NEWS', 'MARKETS', 'LOCAL NEWS', 'LOCAL', 'WEATHER NEWS', 'WEATHER'];
+      
       let citations = rawCitations
         .map(formatCitationEntry)
         .filter((entry) => {
           if (!entry) return false;
           if (seenCitations.has(entry)) return false;
+          
+          // Reject citations that are just category names
+          const sourceName = entry.split(' — ')[0]?.toUpperCase().trim();
+          if (sourceName && invalidSources.includes(sourceName)) {
+            console.warn(`⚠️ Rejecting invalid citation: ${entry}`);
+            return false;
+          }
+          
           seenCitations.add(entry);
           return true;
         });
@@ -269,6 +260,13 @@ export async function fetchDailyNews(): Promise<Card[]> {
             ),
           ].filter(Boolean);
         }
+        
+        // Final fallback: if still no citations, use category-appropriate source
+        if (citations.length === 0) {
+          const categoryName = normalizeCategory(record.category, fallbackCategory);
+          citations = [`${categoryName.charAt(0).toUpperCase() + categoryName.slice(1)} News — https://news.envoy.com`];
+          console.warn(`⚠️ No citation found for ${categoryName} card, using fallback`);
+        }
       }
 
       return {
@@ -282,35 +280,10 @@ export async function fetchDailyNews(): Promise<Card[]> {
       } satisfies Card;
     });
 
-    // Validate and replace cards that contain Wikipedia URLs
-    const validatedCards = cards.map((card, idx) => {
-      const hasWikipedia = card.citations.some(citation =>
-        citation.toLowerCase().includes('wikipedia.org')
-      );
-
-      if (hasWikipedia) {
-        console.log(`⚠️ Card ${idx} (${card.category}) contains Wikipedia citation, replacing...`);
-
-        // Create a replacement card for this category
-        const fallbackCategory = CATEGORY_ORDER[idx] ?? "top";
-        return {
-          id: `card-${idx}-replaced`,
-          headline: `${fallbackCategory.charAt(0).toUpperCase() + fallbackCategory.slice(1)} update unavailable`,
-          summary: `Unable to find suitable ${fallbackCategory} coverage from verified news sources for ${prettyDate}.`,
-          bullets: [`No Wikipedia-free sources found for ${fallbackCategory} category`],
-          category: fallbackCategory,
-          timestamp: fallbackTimestamp,
-          citations: [],
-        } satisfies Card;
-      }
-
-      return card;
-    });
-
     // If the model returned fewer than 6 cards, pad with empty shells to keep UI stable.
-    while (validatedCards.length < CATEGORY_ORDER.length) {
-      const idx = validatedCards.length;
-      validatedCards.push({
+    while (cards.length < CATEGORY_ORDER.length) {
+      const idx = cards.length;
+      cards.push({
         id: `card-${idx}`,
         headline: "Briefing update unavailable",
         summary: "The latest update for this category is still loading.",
@@ -321,8 +294,8 @@ export async function fetchDailyNews(): Promise<Card[]> {
       });
     }
 
-    console.log(`🎉 Total fetch time: ${Date.now() - startTime}ms, returning ${validatedCards.length} cards`);
-    return validatedCards.slice(0, CATEGORY_ORDER.length);
+    console.log(`🎉 Total fetch time: ${Date.now() - startTime}ms, returning ${cards.length} cards`);
+    return cards.slice(0, CATEGORY_ORDER.length);
   } catch (error) {
     console.error("❌ OpenAI web search fetch error:", error);
     return [];
