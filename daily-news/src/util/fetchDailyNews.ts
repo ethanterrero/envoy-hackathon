@@ -71,6 +71,10 @@ Your job is to build a six-card daily workplace briefing that executives can ski
 
 Non-negotiables:
 - You MUST run fresh web searches before answering so every card is grounded in reporting published on ${isoDate}. If a candidate article was not published on ${isoDate}, you must discard it and find one that was.
+- Do NOT use or cite Wikipedia. Exclude any URL matching *.wikipedia.org from your searches and citations.
+- In every search query, append: -site:wikipedia.org to exclude Wikipedia results.
+- Before final output, validate that no "source" field contains "wikipedia.org". If any do, replace the card.
+- If all top results are Wikipedia, broaden the query (add outlet names like "Reuters", "AP", "Bloomberg", "WSJ", "FT", "The Verge", "TechCrunch") while keeping the ${isoDate} filter.
 - Return exactly six cards as JSON. Each card maps to one category: top, tech, sports, markets, local, weather.
 - Summaries must include concrete names, numbers, quotes, or dates pulled directly from the cited article.
 - Every card must include at least one citation formatted as "Outlet — https://link" that points to the article you used. Do not invent outlets or URLs and never return placeholder text like "source unavailable".
@@ -80,6 +84,11 @@ Non-negotiables:
 Return only a JSON object with a single property "cards" containing the array of card objects defined above. Do not add commentary.`;
 
   const userPrompt = `Produce the Envoy workplace briefing for ${prettyDate} using the OpenAI web search tool.
+
+Search Instructions:
+- Append "-site:wikipedia.org" to every search query to exclude Wikipedia results.
+- Do NOT cite or use Wikipedia as a source under any circumstances.
+- If search results are dominated by Wikipedia, broaden your query by adding reputable outlet names (Reuters, AP, Bloomberg, WSJ, FT, The Verge, TechCrunch) while maintaining the ${isoDate} date filter.
 
 Constraints:
 1. Categories (exactly one card each, in this order):
@@ -272,10 +281,35 @@ export async function fetchDailyNews(): Promise<Card[]> {
       } satisfies Card;
     });
 
+    // Validate and replace cards that contain Wikipedia URLs
+    const validatedCards = cards.map((card, idx) => {
+      const hasWikipedia = card.citations.some(citation =>
+        citation.toLowerCase().includes('wikipedia.org')
+      );
+
+      if (hasWikipedia) {
+        console.log(`⚠️ Card ${idx} (${card.category}) contains Wikipedia citation, replacing...`);
+
+        // Create a replacement card for this category
+        const fallbackCategory = CATEGORY_ORDER[idx] ?? "top";
+        return {
+          id: `card-${idx}-replaced`,
+          headline: `${fallbackCategory.charAt(0).toUpperCase() + fallbackCategory.slice(1)} update unavailable`,
+          summary: `Unable to find suitable ${fallbackCategory} coverage from verified news sources for ${prettyDate}.`,
+          bullets: [`No Wikipedia-free sources found for ${fallbackCategory} category`],
+          category: fallbackCategory,
+          timestamp: fallbackTimestamp,
+          citations: [],
+        } satisfies Card;
+      }
+
+      return card;
+    });
+
     // If the model returned fewer than 6 cards, pad with empty shells to keep UI stable.
-    while (cards.length < CATEGORY_ORDER.length) {
-      const idx = cards.length;
-      cards.push({
+    while (validatedCards.length < CATEGORY_ORDER.length) {
+      const idx = validatedCards.length;
+      validatedCards.push({
         id: `card-${idx}`,
         headline: "Briefing update unavailable",
         summary: "The latest update for this category is still loading.",
@@ -286,8 +320,8 @@ export async function fetchDailyNews(): Promise<Card[]> {
       });
     }
 
-    console.log(`🎉 Total fetch time: ${Date.now() - startTime}ms, returning ${cards.length} cards`);
-    return cards.slice(0, CATEGORY_ORDER.length);
+    console.log(`🎉 Total fetch time: ${Date.now() - startTime}ms, returning ${validatedCards.length} cards`);
+    return validatedCards.slice(0, CATEGORY_ORDER.length);
   } catch (error) {
     console.error("❌ OpenAI web search fetch error:", error);
     return [];

@@ -84,7 +84,7 @@ export async function fetchMarketData(): Promise<TickerItem[]> {
     // This is a public endpoint that Yahoo provides for quote data
     const symbols = DEMO_SYMBOLS.join(',');
     const response = await fetch(
-      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}`
+      `/api/yahoo-finance/v7/finance/quote?symbols=${symbols}`
     );
 
     if (!response.ok) {
