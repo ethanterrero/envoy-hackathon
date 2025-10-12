@@ -1,11 +1,9 @@
 import { getCachedData, setCachedData, clearCachedData } from './cache';
 
-// For demo purposes - replace with real API integration
 const DEMO_SYMBOLS = [
   "SPY", "QQQ", "AAPL", "MSFT", "GOOGL", "TSLA", "NVDA", "META"
 ];
 
-// Shared type definitions
 export interface TickerItem {
   symbol: string;
   name: string;
@@ -18,13 +16,13 @@ export interface TickerItem {
 const CACHE_KEY = 'envoy_market_data_cache';
 const CACHE_OPTIONS = { key: CACHE_KEY, refreshHour: 8 };
 
-// Helper function to clear cached data (useful for development)
+// Helper to clear cached data
 export function clearMarketDataCache(): void {
   clearCachedData(CACHE_OPTIONS);
 }
 
 export async function fetchMarketData(): Promise<TickerItem[]> {
-  // First, check if we have valid cached data
+  // valid cached data?
   const cachedData = getCachedData<TickerItem[]>(CACHE_OPTIONS);
   if (cachedData) {
     return cachedData;
@@ -33,14 +31,14 @@ export async function fetchMarketData(): Promise<TickerItem[]> {
   try {
     console.log('🌐 Fetching fresh market data from Alpha Vantage...');
 
-    // Alpha Vantage API - requires API key
+    // Alpha Vantage API
     const apiKey = import.meta.env.VITE_ALPHA_VANTAGE_API_KEY;
 
     if (!apiKey) {
       throw new Error('Alpha Vantage API key not configured. Please add VITE_ALPHA_VANTAGE_API_KEY to your .env file');
     }
 
-    // Fetch data for each symbol individually (Alpha Vantage free tier: 5 calls/min, 100/day)
+    // (Alpha Vantage free tier: 5 calls/min, 100/day)
     const marketDataPromises = DEMO_SYMBOLS.map(async (symbol) => {
       try {
         const response = await fetch(
@@ -56,7 +54,6 @@ export async function fetchMarketData(): Promise<TickerItem[]> {
 
         const data = await response.json();
 
-        // Alpha Vantage returns data in 'Global Quote' field
         const quote = data['Global Quote'];
 
         if (!quote) {
@@ -77,7 +74,6 @@ export async function fetchMarketData(): Promise<TickerItem[]> {
       }
     });
 
-    // Wait for all API calls to complete
     const results = await Promise.all(marketDataPromises);
 
     // Filter out failed requests and create market data array
@@ -123,7 +119,6 @@ function getCompanyName(symbol: string): string {
   return companyNames[symbol] || symbol;
 }
 
-// Default ticker data for initial display (fallback when API fails)
 export function getDefaultTickers(): TickerItem[] {
   return DEMO_SYMBOLS.map(symbol => ({
     symbol,
